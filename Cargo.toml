@@ -1,0 +1,69 @@
+[package]
+name = "azure-eventhub-vector-pipeline"
+version = "0.1.0"
+edition = "2021"
+authors = ["0xSecureByte <chirantan.code@gmail.com>"]
+description = "High-performance Rust application for streaming logs from Azure Event Hub to Vector"
+license = "MIT"
+
+[dependencies]
+# Async Runtime
+tokio = { version = "1.36.0", features = ["full"] }
+tokio-util = { version = "0.7.10", features = ["codec"] }
+
+# Azure SDK
+azure_core = "0.19.0"
+azure_identity = "0.19.0"
+azeventhubs = "0.19.0"
+
+# Error Handling
+anyhow = "1.0.79"
+thiserror = "1.0.56"
+
+# Serialization
+serde = { version = "1.0.196", features = ["derive"] }
+serde_json = "1.0.113"
+toml = "0.8.10"
+
+# Logging & Metrics
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+
+# Concurrent Data Structures
+crossbeam-channel = "0.5.11"
+crossbeam-queue = "0.3.11"
+parking_lot = "0.12.1"
+
+# Configuration
+config = { version = "0.14.0", features = ["toml"] }
+notify = "6.1.1"
+
+# Utilities
+chrono = "0.4.34"
+backoff = { version = "0.4.0", features = ["tokio"] }
+bytes = "1.5.0"
+clap = { version = "4.4.18", features = ["derive"] }
+futures = "0.3.30"
+
+[dev-dependencies]
+# Testing
+tempfile = "3.10.0"
+mockall = "0.12.1"
+tokio-test = "0.4.3"
+test-case = "3.3.1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = 'abort'
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+# Optional: Enable debug info in release mode for better error reporting
+[profile.release-with-debug]
+inherits = "release"
+debug = true

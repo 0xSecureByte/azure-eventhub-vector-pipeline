@@ -1,0 +1,32 @@
+[event_hub]
+namespace = "your-namespace-name.servicebus.windows.net"
+event_hub_names = [
+    "eventhub-1",
+    "eventhub-2",
+    "eventhub-3",
+    "eventhub-4",
+    "eventhub-5",
+    "eventhub-6",
+    "eventhub-7",
+    "eventhub-8"
+]
+consumer_group = "vector-consumer"
+partition_count = 4
+
+[processing]
+batch_size = 1000
+batch_timeout_ms = 100
+worker_count = 4
+queue_size = 10000
+
+[vector]
+host = "localhost"
+port = 9000
+connection_timeout_ms = 5000
+write_timeout_ms = 5000
+retry_initial_interval_ms = 100
+retry_max_interval_ms = 10000
+retry_max_elapsed_time_ms = 300000
+
+[metrics]
+report_interval_seconds = 60

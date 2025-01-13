@@ -1,0 +1,10 @@
+[sources.tcp_input]
+type = "socket"
+address = "0.0.0.0:9000"
+mode = "tcp"
+decoding.codec = "json"
+
+[sinks.console]
+type = "console"
+inputs = ["tcp_input"]
+encoding.codec = "json"
