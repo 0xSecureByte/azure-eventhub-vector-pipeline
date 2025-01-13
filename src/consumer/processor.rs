@@ -84,7 +84,7 @@ impl EventHubConsumer {
             let stream = locked_client
                 .read_events_from_partition(
                     &partition_id,
-                    EventPosition::latest(),
+                    EventPosition::earliest(),
                     ReadEventOptions::default()
                 )
                 .await
@@ -99,13 +99,17 @@ impl EventHubConsumer {
                 match event_result {
                     Ok(event_data) => {
                         let body = match event_data.body() {
-                            Ok(data) => data.to_vec(),
+                            Ok(data) => {
+                                let body_vec = data.to_vec();
+                                // Log the actual event body
+                                tracing::info!("Received event body: {:?}", String::from_utf8_lossy(&body_vec));
+                                body_vec
+                            },
                             Err(e) => {
                                 error!("Failed to get event body: {}", e);
                                 continue;
                             }
                         };
-    
                         let sequence_number = event_data.sequence_number();
                         
                         let processed_event = Event {

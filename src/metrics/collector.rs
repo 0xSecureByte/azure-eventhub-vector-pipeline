@@ -109,11 +109,14 @@ impl MetricsCollector {
                 // Generate log lines in key=value format
                 let mut log_lines = Vec::new();
 
-                // Messages processed statistics
                 if let Some(metric) = metrics_read.get(&MetricType::MessagesProcessed) {
                     let count = metric.count.load(Ordering::Relaxed);
                     log_lines.push(format!("messages_processed={}", count));
-                    log_lines.push(format!("messages_per_second={}", count / uptime));
+                    
+                    // Use safe division
+                    log_lines.push(format!("messages_per_second={}", 
+                        count.checked_div(uptime).unwrap_or(0)
+                    ));
                 }
 
                 // Processing latency statistics

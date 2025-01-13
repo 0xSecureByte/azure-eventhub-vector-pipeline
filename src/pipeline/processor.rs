@@ -2,7 +2,7 @@ use anyhow::Result;
 use crossbeam_queue::ArrayQueue;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{error, warn};
+use tracing::{error, warn, info};
 use serde::{Serialize, Deserialize};
 use std::time::Duration;
 
@@ -97,6 +97,7 @@ impl ProcessingPipeline {
         let config = self.config.clone();
 
         tokio::spawn(async move {
+            info!("Starting worker {}", worker_id);
             let mut batch = Vec::with_capacity(config.batch_size);
             let mut current_partition = String::new();
             

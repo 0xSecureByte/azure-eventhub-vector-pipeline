@@ -56,14 +56,12 @@ impl Application {
             let connection = EventHubConnection::new(hub_config);
             connection.connect().await?;
             
-            let locked_client = connection.get_client().await?;
-
-            let client_with_mutex = Arc::new(Mutex::new(Arc::try_unwrap(locked_client).map_err(|_| {
-                anyhow::anyhow!("Failed to unwrap Arc<EventHubConsumerClient<_>>")
-            })?));
+            let (hub_name, locked_client) = connection.get_client().await?;
+            info!("Processing Event Hub: {}", hub_name);
+            let client_with_mutex = Arc::new(Mutex::new(locked_client));
 
             let (consumer, receiver) = EventHubConsumer::new(
-                client_with_mutex.clone(),
+                client_with_mutex,
                 ConsumerConfig {
                     max_batch_size: initial_config.processing.batch_size,
                     partition_count: initial_config.event_hub.partition_count,

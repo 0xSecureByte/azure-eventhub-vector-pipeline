@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use anyhow::Result;
 use azeventhubs::consumer::{EventHubConsumerClient, EventHubConsumerClientOptions};
 use azeventhubs::{EventHubsRetryPolicy, BasicRetryPolicy, EventHubsRetryOptions};
@@ -18,7 +17,7 @@ where
     RP: EventHubsRetryPolicy + Send,
 {
     config: EventHubConfig,
-    client: Mutex<Option<Arc<EventHubConsumerClient<RP>>>>,
+    client: Mutex<Option<EventHubConsumerClient<RP>>>,
 }
 
 impl<RP> EventHubConnection<RP>
@@ -33,6 +32,9 @@ where
     }
 
     pub async fn connect(&self) -> Result<()> {
+        info!("Attempting to connect to Event Hub: {}", self.config.event_hub_name);
+        info!("Namespace: {}", self.config.fully_qualified_namespace);
+        info!("Consumer Group: {}", self.config.consumer_group);
         let credential = DefaultAzureCredential::default();
         let client_options = EventHubConsumerClientOptions::default();
         
@@ -46,16 +48,16 @@ where
             ).await?;
 
         let mut locked_client = self.client.lock().await;
-        *locked_client = Some(Arc::new(client));
+        *locked_client = Some(client);
 
         info!("Connected to Event Hub: {}", self.config.event_hub_name);
         Ok(())
     }
 
-    pub async fn get_client(&self) -> Result<Arc<EventHubConsumerClient<RP>>> {
-        let locked_client = self.client.lock().await;
-        match &*locked_client {
-            Some(client) => Ok(client.clone()),
+    pub async fn get_client(&self) -> Result<(String, EventHubConsumerClient<RP>)> {
+        let mut locked_client = self.client.lock().await;
+        match locked_client.take() {
+            Some(client) => Ok((self.config.event_hub_name.clone(), client)),
             None => Err(anyhow::anyhow!("Client not connected")),
         }
     }
