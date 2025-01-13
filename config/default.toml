@@ -1,5 +1,5 @@
 [event_hub]
-namespace = "your-namespace-name.servicebus.windows.net"
+fully_qualified_namespace = "your-namespace-name.servicebus.windows.net"
 event_hub_names = [
     "eventhub-1",
     "eventhub-2",
@@ -10,7 +10,7 @@ event_hub_names = [
     "eventhub-7",
     "eventhub-8"
 ]
-consumer_group = "vector-consumer"
+consumer_group = "$Default"
 partition_count = 4
 
 [processing]
