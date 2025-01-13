@@ -5,3 +5,8 @@
 # Azure
 .env
 
+# Virtual Environment
+/myenv
+
+# MacOS
+.DS_Store
