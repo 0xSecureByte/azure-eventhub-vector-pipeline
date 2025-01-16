@@ -19,6 +19,14 @@ batch_timeout_ms = 100
 worker_count = 4
 queue_size = 10000
 
+[checkpointing]
+enabled = true
+storage_account_name = "chkpnt"
+container_name = "chkpnt-container"
+interval_seconds = 30
+retry_max_attempts = 3
+retry_initial_interval_ms = 100
+
 [vector]
 host = "localhost"
 port = 9000

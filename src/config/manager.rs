@@ -7,6 +7,33 @@ use serde::{Serialize, Deserialize};
 use tokio::sync::RwLock;
 use tracing::{info, error};
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CheckpointSettings {
+    pub enabled: bool,
+    pub storage_account_name: String,
+    pub container_name: String,
+    pub interval_seconds: u64,
+    pub retry_max_attempts: u32,
+    pub retry_initial_interval_ms: u64,
+}
+
+impl CheckpointSettings {
+    pub fn validate(&self) -> Result<()> {
+        if self.enabled {
+            if self.storage_account_name.is_empty() {
+                return Err(anyhow::anyhow!("Storage account name cannot be empty when checkpointing is enabled"));
+            }
+            if self.container_name.is_empty() {
+                return Err(anyhow::anyhow!("Container name cannot be empty when checkpointing is enabled"));
+            }
+            if !self.storage_account_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+                return Err(anyhow::anyhow!("Storage account name contains invalid characters"));
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Complete application configuration
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -14,6 +41,7 @@ pub struct AppConfig {
     pub processing: ProcessingSettings,
     pub vector: VectorSettings,
     pub metrics: MetricsSettings,
+    pub checkpointing: CheckpointSettings,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -51,6 +79,14 @@ pub struct MetricsSettings {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
+            checkpointing: CheckpointSettings {
+                enabled: true,
+                storage_account_name: "querr".to_string(),
+                container_name: "eventhub-checkpoints".to_string(),
+                interval_seconds: 30,
+                retry_max_attempts: 3,
+                retry_initial_interval_ms: 100,
+            },
             event_hub: EventHubSettings {
                 fully_qualified_namespace: "namespace.servicebus.windows.net".to_string(),
                 event_hub_names: vec!["hub1".to_string(); 8],

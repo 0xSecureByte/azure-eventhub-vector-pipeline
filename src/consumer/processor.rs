@@ -6,6 +6,7 @@ use tokio::sync::mpsc;
 use tracing::{info, error};
 use futures::stream::StreamExt;  // Changed to explicit import
 use tokio::sync::Mutex;
+use crate::checkpoints::CheckpointStore;
 
 
 #[derive(Clone, Debug)]
@@ -30,19 +31,21 @@ pub struct Event {
     pub data: Vec<u8>,
     pub partition_id: String,
     pub sequence_number: i64,
-    pub offset: String,
+    pub offset: i64,
 }
 
 pub struct EventHubConsumer {
     client: Arc<Mutex<EventHubConsumerClient<BasicRetryPolicy>>>,
     config: ConsumerConfig,
     sender: mpsc::Sender<Event>,
+    checkpoint_store: Option<Arc<CheckpointStore>>,
 }
 
 impl EventHubConsumer {
     pub fn new(
         client: Arc<Mutex<EventHubConsumerClient<BasicRetryPolicy>>>,
         config: ConsumerConfig,
+        checkpoint_store: Option<Arc<CheckpointStore>>,
     ) -> (Self, mpsc::Receiver<Event>) {
         let (sender, receiver) = mpsc::channel(config.buffer_size);
         
@@ -50,6 +53,7 @@ impl EventHubConsumer {
             client,
             config,
             sender,
+            checkpoint_store,
         }, receiver)
     }
 
@@ -74,6 +78,7 @@ impl EventHubConsumer {
     async fn start_partition_consumer(&self, partition_id: String) -> Result<()> {
         let client = Arc::clone(&self.client);
         let sender = self.sender.clone();
+        let checkpoint_store = self.checkpoint_store.clone();
         let _max_batch_size = self.config.max_batch_size;
     
         tokio::spawn(async move {
@@ -81,10 +86,24 @@ impl EventHubConsumer {
     
             let mut locked_client = client.lock().await;
     
+            // Load last checkpoint if available
+            let start_position = if let Some(store) = &checkpoint_store {
+                match store.load_checkpoint(&partition_id).await {
+                    Ok(Some(checkpoint)) => {
+                        info!("Resuming from checkpoint: offset {} for partition {}", 
+                              checkpoint.offset, partition_id);
+                        EventPosition::from_offset(checkpoint.offset, true)
+                    }
+                    _ => EventPosition::earliest(),
+                }
+            } else {
+                EventPosition::earliest()
+            };
+    
             let stream = locked_client
                 .read_events_from_partition(
                     &partition_id,
-                    EventPosition::earliest(),
+                    start_position,
                     ReadEventOptions::default()
                 )
                 .await
@@ -94,6 +113,7 @@ impl EventHubConsumer {
                 })?;
     
             let mut stream = stream;
+            let mut last_checkpoint_time = tokio::time::Instant::now();
     
             while let Some(event_result) = stream.next().await {
                 match event_result {
@@ -116,14 +136,27 @@ impl EventHubConsumer {
                             data: body,
                             partition_id: partition_id.clone(),
                             sequence_number,
-                            offset: event_data.offset()
-                                .map(|o| o.to_string())
-                                .unwrap_or_else(|| "0".to_string()),
+                            offset: event_data.offset().unwrap_or_default(),
                         };
     
                         if let Err(e) = sender.send(processed_event).await {
                             error!("Failed to send event to channel: {}", e);
                             break;
+                        }
+    
+                        // Checkpoint periodically
+                        if let Some(store) = &checkpoint_store {
+                            let now = tokio::time::Instant::now();
+                            if now.duration_since(last_checkpoint_time).as_secs() >= 30 {
+                                if let Err(e) = store.save_checkpoint(
+                                    &partition_id,
+                                    event_data.offset().unwrap_or_default(),
+                                    event_data.sequence_number(),
+                                ).await {
+                                    error!("Failed to save checkpoint: {}", e);
+                                }
+                                last_checkpoint_time = now;
+                            }
                         }
                     }
                     Err(e) => {

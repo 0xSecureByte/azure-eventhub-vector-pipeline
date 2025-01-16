@@ -19,7 +19,7 @@ def generate_mock_event():
         "status": random.choice(["normal", "warning", "critical"])
     }
 
-def send_mock_events(namespace, eventhub_name, num_events=100000):
+def send_mock_events(namespace, eventhub_name, num_events=1):
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),

@@ -10,6 +10,7 @@ use crate::consumer::{Event, EventHubConsumer, ConsumerConfig};
 use crate::pipeline::{EventBatch, ProcessingPipeline, ProcessingConfig};
 use crate::sender::{VectorSender, VectorConfig};  // Added VectorConfig
 use crate::metrics::MetricsCollector;
+use crate::checkpoints::CheckpointStore;
 
 pub struct Application {
     config_manager: Arc<ConfigManager>,
@@ -60,6 +61,22 @@ impl Application {
             info!("Processing Event Hub: {}", hub_name);
             let client_with_mutex = Arc::new(Mutex::new(locked_client));
 
+            let checkpoint_store = if initial_config.checkpointing.enabled {
+                match CheckpointStore::new(
+                    &initial_config.checkpointing.storage_account_name,
+                    &initial_config.checkpointing.container_name,
+                    &hub_name,
+                ).await {
+                    Ok(store) => Some(Arc::new(store)),
+                    Err(e) => {
+                        error!("Failed to initialize checkpoint store: {}. Continuing without checkpointing.", e);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
             let (consumer, receiver) = EventHubConsumer::new(
                 client_with_mutex,
                 ConsumerConfig {
@@ -67,6 +84,7 @@ impl Application {
                     partition_count: initial_config.event_hub.partition_count,
                     buffer_size: initial_config.processing.queue_size,
                 },
+                checkpoint_store,
             );
             
             event_hub_connections.push(connection);

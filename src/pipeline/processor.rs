@@ -115,7 +115,7 @@ impl ProcessingPipeline {
                             metadata: EventMetadata {
                                 partition_id: event.partition_id,
                                 sequence_number: event.sequence_number,
-                                offset: event.offset,
+                                offset: event.offset.to_string(),
                                 timestamp: chrono::Utc::now().timestamp_millis(),
                             },
                         };
