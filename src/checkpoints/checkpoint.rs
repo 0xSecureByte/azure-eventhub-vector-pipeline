@@ -40,33 +40,51 @@
             }
 
             let credential = Arc::new(DefaultAzureCredential::default());
-            let storage_credentials = StorageCredentials::token_credential(credential);
+            info!("Created Azure credential");
             
-            // Create the service client with full URL
+            let storage_credentials = StorageCredentials::token_credential(credential);
+            info!("Created storage credentials");
+            
             let service_client = BlobServiceClient::new(
-                &format!("{}.blob.core.windows.net", storage_account),
+                storage_account,  // Just pass the account name
                 storage_credentials,
             );
+            info!("Created blob service client for account: {}", storage_account);
 
-            // Get container client
             let container_client = service_client.container_client(container_name);
+            info!("Created container client for: {}", container_name);
 
-            // Retry container creation with backoff
+            // Configure backoff with more lenient settings
             let backoff = ExponentialBackoff {
-                max_elapsed_time: Some(std::time::Duration::from_secs(30)),
-                max_interval: std::time::Duration::from_secs(5),
+                max_elapsed_time: Some(std::time::Duration::from_secs(120)),
+                max_interval: std::time::Duration::from_secs(20),
+                initial_interval: std::time::Duration::from_secs(1),
+                multiplier: 2.0,
+                randomization_factor: 0.2,
                 ..ExponentialBackoff::default()
             };
 
             let result = backoff::future::retry(backoff, || async {
-                match container_client.create().await {
-                    Ok(_) => Ok(()),
+                match container_client.get_properties().await {
+                    Ok(_) => {
+                        info!("Successfully connected to existing container: {}", container_name);
+                        Ok(())
+                    }
                     Err(e) => {
-                        if e.to_string().contains("AuthorizationFailure") {
-                            error!("Authorization failure creating container. Please check Azure role assignments: {}", e);
-                            Err(BackoffError::permanent(e))
+                        if e.to_string().contains("ContainerNotFound") {
+                            info!("Container not found, attempting to create: {}", container_name);
+                            match container_client.create().await {
+                                Ok(_) => {
+                                    info!("Successfully created container: {}", container_name);
+                                    Ok(())
+                                }
+                                Err(create_err) => {
+                                    error!("Failed to create container: {}", create_err);
+                                    Err(BackoffError::permanent(create_err))
+                                }
+                            }
                         } else {
-                            error!("Failed to create container, will retry: {}", e);
+                            warn!("Failed to access container, will retry: {}", e);
                             Err(BackoffError::transient(e))
                         }
                     }
@@ -74,15 +92,12 @@
             }).await;
 
             match result {
-                Ok(_) => {
-                    info!("Successfully created/connected to container: {}", container_name);
-                    Ok(Self {
-                        container_client,
-                        checkpoints: Arc::new(RwLock::new(HashMap::new())),
-                        event_hub_name: event_hub_name.to_string(),
-                    })
-                }
-                Err(e) => Err(anyhow::anyhow!("Failed to create/connect to container after retries: {}", e)),
+                Ok(_) => Ok(Self {
+                    container_client,
+                    checkpoints: Arc::new(RwLock::new(HashMap::new())),
+                    event_hub_name: event_hub_name.to_string(),
+                }),
+                Err(e) => Err(anyhow::anyhow!("Failed to initialize container: {}", e)),
             }
         }
 

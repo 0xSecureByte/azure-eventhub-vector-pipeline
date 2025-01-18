@@ -4,6 +4,8 @@ use azeventhubs::{EventHubsRetryPolicy, BasicRetryPolicy, EventHubsRetryOptions}
 use azure_identity::DefaultAzureCredential;
 use tokio::sync::Mutex;
 use tracing::info;
+use std::time::Duration;
+use azeventhubs::MaxRetries;
 
 #[derive(Clone, Debug)]
 pub struct EventHubConfig {
@@ -35,8 +37,14 @@ where
         info!("Attempting to connect to Event Hub: {}", self.config.event_hub_name);
         info!("Namespace: {}", self.config.fully_qualified_namespace);
         info!("Consumer Group: {}", self.config.consumer_group);
+        
         let credential = DefaultAzureCredential::default();
-        let client_options = EventHubConsumerClientOptions::default();
+        let mut client_options = EventHubConsumerClientOptions::default();
+        
+        // Remove operation_timeout and keep only valid options
+        client_options.connection_options.connection_idle_timeout = Duration::from_secs(300);
+        client_options.retry_options.max_retries = MaxRetries::new(5).unwrap();
+        client_options.retry_options.delay = Duration::from_secs(2);
         
         let client = EventHubConsumerClient::with_policy::<RP>()
             .new_from_credential(
@@ -60,5 +68,9 @@ where
             Some(client) => Ok((self.config.event_hub_name.clone(), client)),
             None => Err(anyhow::anyhow!("Client not connected")),
         }
+    }
+
+    pub fn get_config(&self) -> &EventHubConfig {
+        &self.config
     }
 }

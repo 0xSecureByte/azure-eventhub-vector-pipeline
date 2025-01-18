@@ -2,7 +2,6 @@ use std::sync::Arc;
 use anyhow::{Result, Context};  // Added Context trait
 use tokio::signal;
 use tracing::{info, error};
-use tokio::sync::Mutex;
 
 use crate::config::ConfigManager;
 use crate::connection::{EventHubConnection, EventHubConfig};  // Added EventHubConfig
@@ -59,7 +58,6 @@ impl Application {
             
             let (hub_name, locked_client) = connection.get_client().await?;
             info!("Processing Event Hub: {}", hub_name);
-            let client_with_mutex = Arc::new(Mutex::new(locked_client));
 
             let checkpoint_store = if initial_config.checkpointing.enabled {
                 match CheckpointStore::new(
@@ -78,7 +76,10 @@ impl Application {
             };
 
             let (consumer, receiver) = EventHubConsumer::new(
-                client_with_mutex,
+                locked_client,
+                connection.get_config().fully_qualified_namespace.clone(),
+                connection.get_config().event_hub_name.clone(),
+                connection.get_config().consumer_group.clone(),
                 ConsumerConfig {
                     max_batch_size: initial_config.processing.batch_size,
                     partition_count: initial_config.event_hub.partition_count,
@@ -139,8 +140,20 @@ impl Application {
         let mut handles = Vec::new();
         let pipeline = Arc::new(pipeline);
 
-        for (consumer, receiver) in consumers.into_iter().zip(pipeline_receivers) {
-            let _metrics = Arc::clone(&self.metrics);
+        // Start pipeline processing for each receiver
+        for receiver in pipeline_receivers {
+            let pipeline_clone = Arc::clone(&pipeline);
+            let handle = tokio::spawn(async move {
+                if let Err(e) = pipeline_clone.start(receiver).await {
+                    error!("Pipeline error: {}", e);
+                }
+            });
+            handles.push(handle);
+        }
+
+        // Start consumers
+        for mut consumer in consumers {
+            let metrics = Arc::clone(&self.metrics);
             let mut shutdown = self.shutdown_signal.subscribe();
             
             handles.push(tokio::spawn(async move {
@@ -155,26 +168,10 @@ impl Application {
                     }
                 }
             }));
-
-            let _metrics = Arc::clone(&self.metrics);
-            let mut shutdown = self.shutdown_signal.subscribe();
-            let pipeline = Arc::clone(&pipeline);
-            
-            handles.push(tokio::spawn(async move {
-                tokio::select! {
-                    res = pipeline.start(receiver) => {
-                        if let Err(e) = res {
-                            error!("Pipeline error: {}", e);
-                        }
-                    }
-                    _ = shutdown.recv() => {
-                        info!("Pipeline received shutdown signal");
-                    }
-                }
-            }));
         }
 
-        let _metrics = Arc::clone(&self.metrics);
+        // Start vector sender
+        let metrics = Arc::clone(&self.metrics);
         let mut shutdown = self.shutdown_signal.subscribe();
         handles.push(tokio::spawn(async move {
             tokio::select! {
